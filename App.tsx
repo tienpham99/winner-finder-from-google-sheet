@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { fetchSubmissions } from './services/sheetService';
 import type { Submission, SubmissionWithDiff } from './types';
 
@@ -14,10 +14,10 @@ const App: React.FC = () => {
   const [closestSubmissions, setClosestSubmissions] = useState<SubmissionWithDiff[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [choiceFilter, setChoiceFilter] = useState<string>('');
 
   const formatTimestamp = (timestamp: string): string => {
     try {
-      // Expected format from sheet: "29/09/2025 9:10:13"
       const [datePart, timePart] = timestamp.split(' ');
       if (!datePart || !timePart) return timestamp;
   
@@ -62,15 +62,27 @@ const App: React.FC = () => {
     };
     loadData();
   }, []);
+  
+  const filteredSubmissions = useMemo(() => {
+    if (!choiceFilter.trim()) {
+        return submissions;
+    }
+    const lowercasedFilter = choiceFilter.trim().toLowerCase();
+    return submissions.filter(sub => 
+        sub.choice.toLowerCase().includes(lowercasedFilter)
+    );
+  }, [submissions, choiceFilter]);
+
 
   const handleFindWinner = useCallback(() => {
     const resultNum = parseInt(finalResult.replace(/[.,]/g, ''), 10);
-    if (isNaN(resultNum) || submissions.length === 0) {
+    
+    if (isNaN(resultNum) || filteredSubmissions.length === 0) {
       setClosestSubmissions([]);
       return;
     }
 
-    const submissionsWithDiff = submissions.map(sub => ({
+    const submissionsWithDiff = filteredSubmissions.map(sub => ({
       ...sub,
       diff: Math.abs(sub.prediction - resultNum)
     }));
@@ -79,8 +91,6 @@ const App: React.FC = () => {
       if (a.diff !== b.diff) {
         return a.diff - b.diff;
       }
-       // The original timestamp from the sheet is likely 'dd/MM/yyyy HH:mm:ss'
-      // which needs to be parsed correctly for comparison.
       try {
         const [dayA, monthA, yearA, timeA] = a.timestamp.split(/[\/\s:]/);
         const dateA = new Date(`${yearA}-${monthA}-${dayA}T${timeA}:${a.timestamp.split(':')[1]}:${a.timestamp.split(':')[2]}`).getTime();
@@ -92,14 +102,13 @@ const App: React.FC = () => {
           return dateA - dateB;
         }
       } catch (e) {
-         // fallback to string comparison if parsing fails
         return a.timestamp.localeCompare(b.timestamp);
       }
       return a.timestamp.localeCompare(b.timestamp);
     });
 
     setClosestSubmissions(submissionsWithDiff.slice(0, 5));
-  }, [finalResult, submissions]);
+  }, [finalResult, filteredSubmissions]);
   
   const handleKeyPress = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
@@ -112,77 +121,88 @@ const App: React.FC = () => {
     if (isLoading) {
       return (
         <div className="flex flex-col items-center justify-center text-center">
-          <svg className="animate-spin h-12 w-12 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <svg className="animate-spin h-12 w-12 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
-          <p className="mt-4 text-xl text-gray-300">Đang tải dữ liệu...</p>
+          <p className="mt-4 text-xl text-slate-600">Đang tải dữ liệu...</p>
         </div>
       );
     }
 
     if (error) {
-      return <p className="text-2xl text-red-400 bg-red-900/50 p-4 rounded-lg">{error}</p>;
+      return <p className="text-2xl text-red-700 bg-red-100 p-4 rounded-lg">{error}</p>;
     }
 
     const winner = closestSubmissions.length > 0 ? closestSubmissions[0] : null;
 
     return (
       <div className="w-full max-w-4xl mx-auto flex flex-col gap-8">
-        <div className="bg-gray-800/50 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-gray-700">
-          <div className="flex flex-col sm:flex-row items-center gap-4">
+        <div className="bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
+          <div className="flex flex-col md:flex-row items-center gap-4">
+            <input
+              type="text"
+              value={choiceFilter}
+              onChange={(e) => setChoiceFilter(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Lọc theo lựa chọn"
+              className="bg-slate-50 border border-slate-300 rounded-lg p-4 text-lg w-full md:w-1/2 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all duration-300 text-slate-900 placeholder-slate-400"
+            />
             <input
               type="text"
               value={finalResult}
               onChange={(e) => setFinalResult(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="Nhập kết quả cuối cùng"
-              className="flex-grow bg-gray-700 border border-gray-600 rounded-lg p-4 text-lg w-full focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all duration-300 text-white placeholder-gray-400"
+              className="flex-grow bg-slate-50 border border-slate-300 rounded-lg p-4 text-lg w-full focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all duration-300 text-slate-900 placeholder-slate-400"
             />
             <button
               onClick={handleFindWinner}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg text-lg w-full sm:w-auto transition-transform duration-300 transform hover:scale-105"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-8 rounded-lg text-lg w-full md:w-auto transition-transform duration-300 transform hover:scale-105 whitespace-nowrap"
             >
               Tìm người thắng
             </button>
           </div>
-          <p className="text-center text-sm text-gray-400 mt-3">
-            Có tổng cộng <span className="font-bold text-blue-300">{submissions.length}</span> lượt tham gia hợp lệ.
+          <p className="text-center text-sm text-slate-500 mt-3">
+            Có <span className="font-bold text-indigo-600">{filteredSubmissions.length}</span> lượt tham gia hợp lệ
+            {choiceFilter.trim() !== '' && (
+                <span> cho lựa chọn chứa <span className="font-semibold text-indigo-600">"{choiceFilter}"</span></span>
+            )}.
           </p>
         </div>
         
         {winner && (
           <div className="flex flex-col gap-8 animate-fade-in">
             {/* Winner Card */}
-            <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl p-6 border-2 border-yellow-400 relative overflow-hidden">
-                <div className="absolute -top-12 -right-12 text-yellow-500/10">
+            <div className="bg-white rounded-2xl shadow-2xl p-6 border-2 border-amber-400 relative overflow-hidden">
+                <div className="absolute -top-12 -right-12 text-amber-500/10">
                     <TrophyIcon className="w-48 h-48" />
                 </div>
                 <div className="relative z-10">
                     <div className="flex items-center gap-4 mb-4">
-                        <TrophyIcon className="w-10 h-10 text-yellow-400" />
-                        <h2 className="text-3xl font-bold text-yellow-300 tracking-wider">NGƯỜI CHIẾN THẮNG</h2>
+                        <TrophyIcon className="w-10 h-10 text-amber-500" />
+                        <h2 className="text-3xl font-bold text-amber-600 tracking-wider">NGƯỜI CHIẾN THẮNG</h2>
                     </div>
                     <div className="space-y-3 text-lg">
-                        <div className="flex justify-between items-center border-b border-gray-700 pb-2">
-                            <span className="font-semibold text-gray-400">Số điện thoại:</span>
-                            <span className="font-mono text-white">{winner.phone}</span>
+                        <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                            <span className="font-semibold text-slate-500">Số điện thoại:</span>
+                            <span className="font-mono text-slate-900">{winner.phone}</span>
                         </div>
-                        <div className="flex justify-between items-center border-b border-gray-700 pb-2">
-                            <span className="font-semibold text-gray-400">Thời gian gửi:</span>
-                            <span className="font-mono text-white text-sm">{formatTimestamp(winner.timestamp)}</span>
+                        <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                            <span className="font-semibold text-slate-500">Thời gian gửi:</span>
+                            <span className="font-mono text-slate-900 text-sm">{formatTimestamp(winner.timestamp)}</span>
                         </div>
-                        <div className="flex justify-between items-center border-b border-gray-700 pb-2">
-                            <span className="font-semibold text-gray-400">Lựa chọn:</span>
-                            <span className="text-white text-right">{winner.choice}</span>
+                        <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                            <span className="font-semibold text-slate-500">Lựa chọn:</span>
+                            <span className="text-slate-900 text-right">{winner.choice}</span>
                         </div>
-                        <div className="flex justify-between items-center border-b border-gray-700 pb-2">
-                            <span className="font-semibold text-gray-400">Dự đoán:</span>
-                            <span className="font-mono text-green-300 text-xl">{winner.prediction.toLocaleString('vi-VN')}</span>
+                        <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                            <span className="font-semibold text-slate-500">Dự đoán:</span>
+                            <span className="font-mono text-green-600 text-xl">{winner.prediction.toLocaleString('vi-VN')}</span>
                         </div>
                         <div className="flex justify-between items-center pt-2">
-                            <span className="font-semibold text-gray-400">Chênh lệch:</span>
-                            <span className="font-mono text-red-400 text-xl font-bold">{winner.diff.toLocaleString('vi-VN')}</span>
+                            <span className="font-semibold text-slate-500">Chênh lệch:</span>
+                            <span className="font-mono text-red-600 text-xl font-bold">{winner.diff.toLocaleString('vi-VN')}</span>
                         </div>
                     </div>
                 </div>
@@ -190,22 +210,22 @@ const App: React.FC = () => {
 
             {/* Runners-up List */}
             {closestSubmissions.length > 1 && (
-                <div className="bg-gray-800/50 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-gray-700">
-                    <h3 className="text-2xl font-bold text-blue-300 mb-4">Top 5 dự đoán gần nhất</h3>
+                <div className="bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
+                    <h3 className="text-2xl font-bold text-indigo-600 mb-4">Top 5 dự đoán gần nhất</h3>
                     <ol className="space-y-3">
                         {closestSubmissions.map((sub, index) => (
-                            <li key={sub.id} className={`p-4 rounded-lg flex items-center justify-between gap-4 transition-colors duration-300 ${index === 0 ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-gray-700/50 border border-transparent'}`}>
+                            <li key={sub.id} className={`p-4 rounded-lg flex items-center justify-between gap-4 transition-colors duration-300 ${index === 0 ? 'bg-amber-100/50 border border-amber-400/30' : 'bg-slate-50 border border-transparent'}`}>
                                 <div className="flex items-center gap-4">
-                                    <span className={`text-xl font-bold ${index === 0 ? 'text-yellow-400' : 'text-gray-400'}`}>#{index + 1}</span>
+                                    <span className={`text-xl font-bold ${index === 0 ? 'text-amber-600' : 'text-slate-500'}`}>#{index + 1}</span>
                                     <div>
-                                        <p className="font-mono text-white">{sub.phone}</p>
-                                        <p className="text-xs text-gray-400 font-mono">{formatTimestamp(sub.timestamp)}</p>
-                                        <p className="text-sm text-gray-300 hidden sm:block">{sub.choice}</p>
+                                        <p className="font-mono text-slate-800">{sub.phone}</p>
+                                        <p className="text-xs text-slate-500 font-mono">{formatTimestamp(sub.timestamp)}</p>
+                                        <p className="text-sm text-slate-600 hidden sm:block">{sub.choice}</p>
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <p className="font-mono text-green-300">{sub.prediction.toLocaleString('vi-VN')}</p>
-                                    <p className="text-sm text-red-400">Lệch: {sub.diff.toLocaleString('vi-VN')}</p>
+                                    <p className="font-mono text-green-600">{sub.prediction.toLocaleString('vi-VN')}</p>
+                                    <p className="text-sm text-red-600">Lệch: {sub.diff.toLocaleString('vi-VN')}</p>
                                 </div>
                             </li>
                         ))}
@@ -219,12 +239,12 @@ const App: React.FC = () => {
   };
 
   return (
-    <main className="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-4 sm:p-8 font-sans">
+    <main className="bg-slate-100 text-slate-800 min-h-screen flex flex-col items-center justify-center p-4 sm:p-8 font-sans">
       <div className="w-full text-center mb-8">
-        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500 mb-2">
-          Tìm Kiếm Người Thắng Cuộc
+        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-sky-500 to-indigo-600 mb-2">
+          Tìm Kiếm Người Thắng Cuộc Với Kết Quả Dự Đoán Chính Xác Nhất
         </h1>
-        <p className="text-lg text-gray-400">
+        <p className="text-lg text-slate-500">
           Dữ liệu được cập nhật trực tiếp từ Google Sheet
         </p>
       </div>
