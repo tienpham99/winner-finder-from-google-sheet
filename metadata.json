@@ -1,0 +1,5 @@
+{
+  "name": "Winner Finder from Google Sheet",
+  "description": "An application to find the winner from a Google Sheet by identifying the prediction closest to a given final result. Data is fetched live from a public Google Sheet.",
+  "requestFramePermissions": []
+}
